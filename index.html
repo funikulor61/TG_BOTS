@@ -132,8 +132,12 @@
             formData.append('audio', selectedFile);
 
             try {
-                const response = await fetch(`${BACKEND_URL}/api/upload`, {
+                // Замените на это:
+                const response = await fetch(`${BACKEND_URL.replace(/\/$/, '')}/api/upload`, {
                     method: 'POST',
+                    headers: {
+                        'X-Tunnel-Skip-AntiPhishing-Page': 'true' // Пропускает заглушку Microsoft
+                    },
                     body: formData
                 });
                 if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
