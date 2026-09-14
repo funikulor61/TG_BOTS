@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузчик музыки</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin-bottom: 20px; text-align: center; }
+        .upload-area {
+            border: 2px dashed var(--tg-theme-hint-color, #ccc);
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .upload-area:hover { border-color: var(--tg-theme-button-color, #2481cc); }
+        .upload-area input { display: none; }
+        .upload-icon { font-size: 3rem; margin-bottom: 10px; }
+        .file-info {
+            display: none;
+            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            padding: 15px; border-radius: 8px; margin-bottom: 20px;
+        }
+        .file-info.active { display: block; }
+        button {
+            width: 100%; padding: 15px; font-size: 1rem; font-weight: 600;
+            border: none; border-radius: 8px;
+            background: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            cursor: pointer;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .result {
+            display: none; margin-top: 20px; padding: 15px;
+            background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            border-radius: 8px; word-break: break-all;
+        }
+        .result.active { display: block; }
+        .result a { color: var(--tg-theme-link-color, #2481cc); }
+        .status { text-align: center; margin-top: 15px; font-size: 0.9rem; }
+        .spinner {
+            display: none; width: 24px; height: 24px;
+            border: 3px solid #ccc; border-top-color: #2481cc;
+            border-radius: 50%; animation: spin 1s linear infinite;
+            margin: 15px auto;
+        }
+        .spinner.active { display: block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Загрузка музыки</h1>
+
+        <label class="upload-area" for="audioInput">
+            <div class="upload-icon">📁</div>
+            <div>Нажмите, чтобы выбрать аудиофайл</div>
+            <input type="file" id="audioInput" accept="audio/*">
+        </label>
+
+        <div class="file-info" id="fileInfo">
+            <strong>Выбранный файл:</strong>
+            <div id="fileName"></div>
+            <div id="fileSize"></div>
+        </div>
+
+        <button id="uploadBtn" disabled>Загрузить и получить ссылку</button>
+
+        <div class="spinner" id="spinner"></div>
+        <div class="status" id="status"></div>
+
+        <div class="result" id="result">
+            <strong>✅ Ваша ссылка:</strong>
+            <div style="margin-top: 8px;">
+                <a id="resultLink" href="#" target="_blank"></a>
+            </div>
+            <button id="copyBtn" style="margin-top: 10px; padding: 10px;">📋 Скопировать</button>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        // ⚠️ ЗАМЕНИТЕ на адрес вашего ngrok-туннеля
+        const BACKEND_URL = 'https://3c12d6n8-8000.euw.devtunnels.ms/';
+
+        const audioInput = document.getElementById('audioInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const spinner = document.getElementById('spinner');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        const resultLink = document.getElementById('resultLink');
+        const copyBtn = document.getElementById('copyBtn');
+
+        let selectedFile = null;
+
+        audioInput.addEventListener('change', (e) => {
+            selectedFile = e.target.files[0];
+            if (selectedFile) {
+                fileName.textContent = selectedFile.name;
+                fileSize.textContent = (selectedFile.size / 1024 / 1024).toFixed(2) + ' MB';
+                fileInfo.classList.add('active');
+                uploadBtn.disabled = false;
+            }
+        });
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            uploadBtn.disabled = true;
+            spinner.classList.add('active');
+            status.textContent = 'Загрузка...';
+            result.classList.remove('active');
+
+            const formData = new FormData();
+            formData.append('audio', selectedFile);
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+                const data = await response.json();
+
+                if (data.url) {
+                    resultLink.href = data.url;
+                    resultLink.textContent = data.url;
+                    result.classList.add('active');
+                    status.textContent = '✅ Готово!';
+                    tg.sendData(JSON.stringify({ action: 'upload_complete', url: data.url }));
+                } else {
+                    throw new Error('URL не получен');
+                }
+            } catch (error) {
+                console.error(error);
+                status.textContent = `❌ Ошибка: ${error.message}`;
+            } finally {
+                spinner.classList.remove('active');
+                uploadBtn.disabled = false;
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(resultLink.href).then(() => {
+                copyBtn.textContent = '✅ Скопировано!';
+                setTimeout(() => copyBtn.textContent = '📋 Скопировать', 2000);
+            });
+        });
+    </script>
+</body>
+</html>
